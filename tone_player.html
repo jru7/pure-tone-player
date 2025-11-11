@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pure Tone Player (single screen, jsPsych audio)</title>
+
+  <!-- jsPsych core (CDN as required) -->
+  <script src="https://unpkg.com/jspsych@7.3.4"></script>
+
+  <!-- jsPsych CSS (for button styling) -->
+  <link rel="stylesheet"
+        href="https://unpkg.com/jspsych@7.3.4/css/jspsych.css" />
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    h1 {
+      margin-bottom: 0.2em;
+    }
+    .ear-section {
+      margin-top: 2em;
+    }
+    .button-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-top: 0.5em;
+    }
+    .jspsych-btn {
+      min-width: 120px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Pure Tone Player</h1>
+  <p>Click a button to play a 10-second pure tone via jsPsych's audio system.</p>
+
+  <div class="ear-section">
+    <h2>Left ear</h2>
+    <div id="left-buttons" class="button-grid"></div>
+  </div>
+
+  <div class="ear-section">
+    <h2>Right ear</h2>
+    <div id="right-buttons" class="button-grid"></div>
+  </div>
+
+  <!-- jsPsych display element (not shown visually) -->
+  <div id="jspsych-target" style="display:none;"></div>
+
+  <script>
+    // Initialize jsPsych (override_safe_mode helps in some local setups)
+    const jsPsych = initJsPsych({
+      override_safe_mode: true,
+      display_element: 'jspsych-target'
+    });
+
+    const audioDir = 'PureTones_FullScale_10secs/';
+
+    const leftTones = [
+      { label: 'Left 125 Hz', file: 'PT_Left_125Hz.wav' },
+      { label: 'Left 250 Hz', file: 'PT_Left_250Hz.wav' },
+      { label: 'Left 500 Hz', file: 'PT_Left_500Hz.wav' },
+      { label: 'Left 1 kHz',  file: 'PT_Left_1kHz.wav' },
+      { label: 'Left 2 kHz',  file: 'PT_Left_2kHz.wav' },
+      { label: 'Left 3 kHz',  file: 'PT_Left_3kHz.wav' },
+      { label: 'Left 4 kHz',  file: 'PT_Left_4kHz.wav' },
+      { label: 'Left 6 kHz',  file: 'PT_Left_6kHz.wav' },
+      { label: 'Left 8 kHz',  file: 'PT_Left_8kHz.wav' },
+      { label: 'Left 10 kHz', file: 'PT_Left_10kHz.wav' }
+    ];
+
+    const rightTones = [
+      { label: 'Right 125 Hz', file: 'PT_Right_125Hz.wav' },
+      { label: 'Right 250 Hz', file: 'PT_Right_250Hz.wav' },
+      { label: 'Right 500 Hz', file: 'PT_Right_500Hz.wav' },
+      { label: 'Right 1 kHz',  file: 'PT_Right_1kHz.wav' },
+      { label: 'Right 2 kHz',  file: 'PT_Right_2kHz.wav' },
+      { label: 'Right 3 kHz',  file: 'PT_Right_3kHz.wav' },
+      { label: 'Right 4 kHz',  file: 'PT_Right_4kHz.wav' },
+      { label: 'Right 6 kHz',  file: 'PT_Right_6kHz.wav' },
+      { label: 'Right 8 kHz',  file: 'PT_Right_8kHz.wav' },
+      { label: 'Right 10 kHz', file: 'PT_Right_10kHz.wav' }
+    ];
+
+    const context = jsPsych.pluginAPI.audioContext();
+
+    // Track any currently playing audio (WebAudio OR HTML5)
+    let currentSource = null;     // WebAudio buffer source
+    let currentHtmlAudio = null;  // HTML5 Audio element
+
+    function stopCurrent() {
+      // Stop WebAudio source if any
+      if (currentSource) {
+        try {
+          currentSource.stop();
+        } catch (e) {
+          console.warn('Error stopping current WebAudio source:', e);
+        }
+        currentSource = null;
+      }
+
+      // Stop and reset HTML5 audio if any
+      if (currentHtmlAudio) {
+        try {
+          currentHtmlAudio.pause();
+          currentHtmlAudio.currentTime = 0;
+        } catch (e) {
+          console.warn('Error stopping current HTML5 audio:', e);
+        }
+        currentHtmlAudio = null;
+      }
+    }
+
+    function playTone(fileName) {
+      const path = audioDir + fileName;
+
+      // ALWAYS stop whatever is currently playing first
+      stopCurrent();
+
+      if (context) {
+        const startPlayback = () => {
+          jsPsych.pluginAPI.getAudioBuffer(path)
+            .then(buffer => {
+              const source = context.createBufferSource();
+              source.buffer = buffer;
+              source.connect(context.destination);
+              source.start();
+              currentSource = source;
+
+              // When the sound ends, clear the reference
+              source.onended = () => {
+                if (currentSource === source) {
+                  currentSource = null;
+                }
+              };
+            })
+            .catch(err => {
+              console.warn('WebAudio buffer load failed, falling back to HTML5 audio:', err);
+              const audio = new Audio(path);
+              currentHtmlAudio = audio;
+              audio.onended = () => {
+                if (currentHtmlAudio === audio) {
+                  currentHtmlAudio = null;
+                }
+              };
+              audio.play();
+            });
+        };
+
+        // Ensure AudioContext is running after user gesture
+        if (context.state === 'suspended') {
+          context.resume().then(startPlayback);
+        } else {
+          startPlayback();
+        }
+      } else {
+        // Fallback: HTML5 audio only
+        const audio = new Audio(path);
+        currentHtmlAudio = audio;
+        audio.onended = () => {
+          if (currentHtmlAudio === audio) {
+            currentHtmlAudio = null;
+          }
+        };
+        audio.play();
+      }
+    }
+
+    function makeButtons(tones, containerId) {
+      const container = document.getElementById(containerId);
+
+      tones.forEach(tone => {
+        const btn = document.createElement('button');
+        btn.className = 'jspsych-btn';
+        btn.textContent = tone.label;
+
+        btn.addEventListener('click', () => {
+          playTone(tone.file);
+        });
+
+        container.appendChild(btn);
+      });
+    }
+
+    makeButtons(leftTones, 'left-buttons');
+    makeButtons(rightTones, 'right-buttons');
+  </script>
+</body>
+</html>
